@@ -1,0 +1,69 @@
+# TODO: Make patterns part of build
+def read_int(f, sz):
+    x = 0
+
+    string = f.read(sz)
+
+    if not string:
+        return (0, False)
+
+    for char in string[::-1]:
+        x = (x << 8) | ord(char)
+
+    return (x, True)
+
+def core_patterns():
+    patterns_file_path = "patterns.bin"
+    patterns = List[str]()
+
+    with open(patterns_file_path, "rb") as patterns_file:
+        alphabet = "ACGT"
+
+        ln = Int[2]
+        cnt = Int[4]
+        sz = Int[8]
+        x = Int[8]
+
+        while True:
+
+            ln, status = read_int(patterns_file, 2)
+
+            if not status:
+                break
+            cnt, status = read_int(patterns_file, 4)
+
+            if not status:
+                print("Error reading pattern file")
+                break
+
+            sz = ln // 4 + (1 if ln % 4 else 0)
+
+            flag = True
+
+            for i in range(cnt):
+                x, status = read_int(patterns_file, sz)
+                if not status:
+                    flag = False
+                    print("Error reading pattern file")
+                    break
+
+                pattern = ""
+
+                for j in range(ln-1, -1, -1):
+                    pattern += alphabet[(x >> (2 * j)) & 3]
+
+                patterns.append(pattern)
+            
+            if not flag:
+                break
+
+    return patterns
+
+def get_patterns_from_file(file_name):
+    patterns = List[str]()
+
+    with open(file_name, "r") as patterns_file:
+        for line in patterns_file:
+            patterns.append(line.strip())
+
+    return patterns

@@ -1,0 +1,158 @@
+from bio import *
+import aho_trie
+import patterns
+from python import os
+import sys
+
+import gzip
+from python import shutil
+
+FASTQ_FILE = 0
+FASTA_FILE = 1
+
+base_index = {
+    "A": Int[8](0),
+    "C": Int[8](1),
+    "G": Int[8](2),
+    "T": Int[8](3)
+}
+
+def write_int(f, x, sz):
+    mask = int(0xff)
+    integer = int(x)
+
+    for i in range(sz):
+        f.write(chr(integer & mask))
+        integer >>= 8
+
+def write_read(read, bucket, n, file):
+    core = Int[32](0)
+    length = Int[64](0)
+
+    core = bucket.id
+    length = len(read)
+
+    write_int(file, core, 4)
+    write_int(file, length, 8)
+    write_int(file, n, 8)
+
+    current_char = Int[8](0)
+    char_count = 0
+
+    for i in range(n+1, length):
+        current_char = (current_char << Int[8](2)) | base_index[read[i]]
+        char_count += 1
+
+        if char_count == 4:
+            write_int(file, current_char, 1)
+            current_char = Int[8](0)
+            char_count = 0
+
+    for i in range(0, n - bucket.level + 1):
+        current_char = (current_char << Int[8](2)) | base_index[read[i]]
+        char_count += 1
+
+        if char_count == 4:
+            write_int(file, current_char, 1)
+            current_char = Int[8](0)
+            char_count = 0
+
+    if char_count:
+        while char_count != 4:
+            current_char <<= Int[8](2)
+            char_count += 1
+
+        write_int(file, current_char, 1)
+
+def write_name(name, file):
+    file.write(name + "\n")
+
+def write_qual(qual, file):
+    file.write(qual + "\n")
+
+def compress_fastq(input_file, paired, trie, output_file, temp_dir = "__temp__"):
+    print("Compressing FASTQ file")
+
+    if not os.path.exists(temp_dir):
+        os.makedirs(temp_dir)
+
+    print("Writing to temporary files")
+    read_file = open(f"{temp_dir}/reads", "w")
+    name_file = open(f"{temp_dir}/names", "w")
+    qual_file = open(f"{temp_dir}/quals", "w")
+
+    print("Reading FASTQ file")
+
+    # iterate over everything
+    for r in FASTQ(input_file):
+        bucket, n = trie.search(str(r.read))
+        write_read(str(r.read), bucket, n, read_file)
+        write_name(r.name, name_file)
+        write_qual(r.qual, qual_file)
+
+    print("Closing temporary files")
+    read_file.close()
+    name_file.close()
+    qual_file.close()
+
+    with open(f"{temp_dir}/reads", "rb") as f_in:
+        with gzip.open(f"{output_file}.scalcer", "wb") as f_out:
+            f_out.write(f_in.read())
+
+    with open(f"{temp_dir}/names", "rb") as f_in:
+        with gzip.open(f"{output_file}.scalcen", "wb") as f_out:
+            f_out.write(f_in.read())
+
+    with open(f"{temp_dir}/quals", "rb") as f_in:
+        with gzip.open(f"{output_file}.scalceq", "wb") as f_out:
+            f_out.write(f_in.read())
+
+    print("OK")
+
+
+
+
+def compress_fasta(input_files, trie, output_file):
+    pass
+
+def compress(input_file, file_type, paired, output_file, patterns_file = ""):
+    patterns = List[str]()
+
+    if patterns_file:
+        print("Reading patterns file")
+        patterns = patterns.get_patterns_from_file(patterns_file)
+    else:
+        print("Building Core Patterns")
+        patterns = patterns.core_patterns()
+
+    print("Building Aho Trie from patterns")
+    trie = aho_trie.build_trie_from_patterns(patterns)
+
+    print("OK")
+
+    if file_type == FASTQ_FILE:
+        compress_fastq(input_file, paired, trie, output_file)
+
+    elif file_type == FASTA_FILE:
+        compress_fasta(input_file, trie, output_file)
+    
+    else:
+        print("Unknown file type")
+        return
+
+def main():
+    if len(sys.argv) < 3:
+        print("Usage: scalce_compress <input_file> <output_file>")
+        return
+
+    input_file = sys.argv[1]
+    output_file = sys.argv[2]
+
+    file_type = FASTQ_FILE
+
+    compress(input_file, file_type, False, output_file)
+
+if __name__ == "__main__":
+    main()
+
+

@@ -1,0 +1,196 @@
+from bio import *
+from python import struct
+
+base_index = {
+    "A": 0,
+    "C": 1,
+    "G": 2,
+    "T": 3
+}
+
+
+class Bin_Node:
+    read: str
+    next: Bin_Node
+    initialized: bool
+
+    def __init__(self):
+        initialized = True
+
+class Bin:
+    first: Bin_Node
+    last: Bin_Node
+    size: Int[32]
+    initialized: bool
+
+    def __init__(self):
+        size = 0
+        initialized = True
+
+    # def __init__(self):
+    #     self.first = None
+    #     self.last = None
+    #     self.size = None
+
+
+
+class Aho_Trie:
+    child: Dict[int, Aho_Trie]           # trie nodes (A, C, T, G) 
+    fail: Aho_Trie                  # aho automaton fail pointer
+    next_to_output: Aho_Trie        # pointer to "output" node
+    next_to_output_set: bool        # is next_to_output set?
+    level: int                      # node level in trie
+    id: Int[32]                     # pattern identificator
+    bin_size: Int[64]               # total number of reads bucketed so far
+    output: Int[32]                 # is this node "output" node?
+    bin: Bin                        # bin linked list
+    node_count: int                 # number of nodes in trie
+    initialized: bool               # is this node initialized?
+
+    def __init__(self):
+        # self.fail = None
+        self.output = Int[32](-1)
+        self.bin_size = 0
+        # self.next_to_output = None
+        self.next_to_output_set = False
+        self.level = 0
+        self.id = Int[32](0)
+        self.child = Dict[int, Aho_Trie]()
+        self.bin = Bin()
+        self.node_count = 0
+        self.initialized = True
+
+    def __bool__(self):
+        return self.initialized
+
+    def __eq__(self, other):
+        return self is other
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def insert_pattern(self, pattern, id):
+        node = self
+
+        for char in pattern:
+            index = base_index[char]
+            if index not in node.child:
+                node.child[index] = Aho_Trie()
+                node.child[index].level = node.level + 1
+                self.node_count += 1
+            node = node.child[index]
+        node.output = Int[32](id)
+
+    def search(self, read):
+        current = self
+        largest = self
+        x = self
+
+        best_pos = -1
+        for i, char in enumerate(read):
+            index = base_index[char]
+
+            if index in current.child:
+                current = current.child[index]
+
+                if current.next_to_output_set:
+                    x = current.next_to_output
+
+                    if largest == self or not largest or largest.level < x.level or (largest.level == x.level and largest.bin_size < x.bin_size):
+                        largest = x
+                        best_pos = i
+
+        return (largest if largest else self, best_pos)
+
+class Trie_Queue:
+    data: Dict[int, Aho_Trie]
+    sz: int
+    start: int
+    end: int
+    size: int
+
+    def __init__(self, size):
+        self.data = Dict[int, Aho_Trie]()
+        self.sz = size
+        self.start = 0
+        self.end = 0
+        self.size = 0
+
+    def push(self, node):
+        self.data[self.end] = node
+        self.end = (self.end + 1) % self.sz
+        self.size += 1
+
+    def pop(self):
+        node = self.data[self.start]
+        self.start = (self.start + 1) % self.sz
+        self.size -= 1
+        return node
+
+def prepare_aho_automata(root):
+    q = Trie_Queue(root.node_count + 1)
+    root.fail = root
+
+    for i in range(4):
+        if root.child[i]:
+            root.child[i].fail = root
+            q.push(root.child[i])
+
+    traveresed = Int[32](0)
+
+    while q.size > 0:
+        current = q.pop()
+        for i in range(4):
+            if i in current.child:
+                t = current.child[i]
+                f = current.fail
+                while f != root and i not in f.child:
+                    f = f.fail
+
+                t.fail = f.child[i] if i in f.child else root
+
+                q.push(t)
+
+                if t.fail.output >= Int[32](0) and t.fail:
+                    t.next_to_output = t.fail
+                    t.next_to_output_set = True
+                elif t.fail.next_to_output_set:
+                    t.next_to_output = t.fail.next_to_output
+                    t.next_to_output_set = True
+
+
+        traveresed += Int[32](1)
+        current.id += traveresed
+    
+
+    q.start = 0
+    q.end = 0
+    q.size = 0
+
+
+    # q.push(root)
+
+    # while q.size > 0:
+    #     current = q.pop()
+    #     for i in range(4):
+    #         if i in current.child:
+    #             q.push(current.child[i])
+    #         c = current
+    #         while c and c.output == Int[32](-1):
+    #             if not c.next_to_output_set:
+    #                 break
+    #             c = c.next_to_output
+    #         # del current.next_to_output
+    #         current.next_to_output_set = False
+
+def build_trie_from_patterns(patterns, compress = True):
+    root = Aho_Trie()
+
+    for id, pattern in enumerate(patterns):
+        root.insert_pattern(pattern, id)
+
+    if compress:
+        prepare_aho_automata(root)
+
+    return root
+    

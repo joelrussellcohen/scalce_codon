@@ -1,0 +1,121 @@
+import patterns
+import os
+import sys
+
+import gzip
+
+FASTQ_FILE = 0
+FASTA_FILE = 1
+
+index_base = {
+    0: "A",
+    1: "C",
+    2: "G",
+    3: "T"
+}
+
+def read_int(f, sz):
+    x = 0
+
+    string = f.read(sz)
+
+    if not string:
+        return (0, False)
+
+    for char in string[::-1]:
+        x = (x << 8) | ord(char)
+
+    return (x, True)
+
+def read_to_string(f, sz):
+    string = ""
+
+    for i in range(sz//4 + (1 if sz % 4 else 0)):
+        x, status = read_int(f, 1)
+
+        if not status:
+            return ("", False)
+
+        for j in range(min(4, sz - 4 * i)-1,-1, -1):
+            string += index_base[(x >> (2 * j)) & 3]
+
+    return (string, True)
+        
+
+def decompress(file_name, output_file_name):
+    print("Building Core Patterns")
+    patterns = patterns.core_patterns()
+
+    print("Opening Read File")
+    with gzip.open(f"{file_name}.scalcer", "rb") as read_file:
+        print("Opening Name File")
+        with gzip.open(f"{file_name}.scalcen", "r") as name_file:
+            print("Opening Qual File")
+            names = name_file.read().split("\n")
+            print(f"Opening Output File: {output_file_name}")
+            with gzip.open(f"{file_name}.scalceq", "r") as qual_file:
+                quals = qual_file.read().split("\n")
+                with open(output_file_name, "w") as output_file:
+                    core = Int[32](0)
+                    length = Int[64](0)
+                    end = Int[64](0)
+
+                    int index = 0
+
+                    while True:
+                        core, status = read_int(read_file, 4)
+
+                        print(f"core: {core}, status: {status}")
+
+                        if not status:
+                            break
+
+                        length, status = read_int(read_file, 8)
+
+                        if not status:
+                            print("Error reading read file")
+                            break
+
+                        end, status = read_int(read_file, 8)
+
+                        if not status:
+                            print("Error reading read file")
+                            break
+
+                        read, status = read_to_string(read_file, length)
+
+                        if not status:
+                            print("Error reading read file")
+                            break
+
+                        core_string = ""
+
+                        if core < len(patterns):
+                            core_string = patterns[core]
+
+
+                        # read = read[-end+1:-len(core_string)-1] + core_string + read[-len(core_string)-1:]
+
+                        name = names[index]
+                        qual = quals[index]
+
+
+                        output_file.write(name+"\n")
+                        output_file.write(read+"\n")
+                        output_file.write("+\n")
+                        output_file.write(qual+"\n")
+
+def main():
+    if len(sys.argv) != 3:
+        print("Usage: scalce_decompress <input_file> <output_file>")
+        return
+
+    input_file = sys.argv[1]
+    output_file = sys.argv[2]
+
+    decompress(input_file, output_file)
+
+if __name__ == "__main__":
+    main()
+
+                            
